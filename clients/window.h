@@ -43,6 +43,7 @@ struct widget;
 struct display;
 struct input;
 struct output;
+struct tablet;
 
 struct task {
 	void (*run)(struct task *task, uint32_t events);
@@ -271,6 +272,12 @@ typedef void (*widget_axis_handler_t)(struct widget *widget,
 				      uint32_t axis,
 				      wl_fixed_t value,
 				      void *data);
+typedef void (*widget_tablet_motion_handler_t)(struct widget *widget,
+					       struct tablet *tablet,
+					       float x,
+					       float y,
+					       uint32_t time,
+					       void *data);
 
 struct window *
 window_create(struct display *display);
@@ -525,6 +532,9 @@ void
 widget_set_axis_handler(struct widget *widget,
 			widget_axis_handler_t handler);
 void
+widget_set_tablet_motion_handler(struct widget *widget,
+				 widget_tablet_motion_handler_t handler);
+void
 widget_schedule_redraw(struct widget *widget);
 void
 widget_set_use_cairo(struct widget *widget, int use_cairo);
@@ -625,6 +635,15 @@ output_get_make(struct output *output);
 
 const char *
 output_get_model(struct output *output);
+
+void
+tablet_get_position(struct tablet *tablet, int32_t *x, int32_t *y);
+
+void
+tablet_set_user_data(struct tablet *tablet, void *data);
+
+void *
+tablet_get_user_data(struct tablet *tablet);
 
 void
 keysym_modifiers_add(struct wl_array *modifiers_map,
