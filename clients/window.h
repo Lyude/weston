@@ -500,6 +500,8 @@ widget_destroy(struct widget *widget);
 void
 widget_set_default_cursor(struct widget *widget, int cursor);
 void
+widget_set_default_tablet_cursor(struct widget *widget, int cursor);
+void
 widget_get_allocation(struct widget *widget, struct rectangle *allocation);
 
 void
@@ -706,5 +708,8 @@ tablet_tool_get_serial(struct tablet_tool *tool);
 
 uint64_t
 tablet_tool_get_hwid(struct tablet_tool *tool);
+
+void
+tablet_tool_set_cursor_image(struct tablet_tool *tool, int cursor);
 
 #endif
