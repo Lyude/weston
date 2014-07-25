@@ -272,12 +272,12 @@ typedef void (*widget_axis_handler_t)(struct widget *widget,
 				      uint32_t axis,
 				      wl_fixed_t value,
 				      void *data);
-typedef void (*widget_tablet_motion_handler_t)(struct widget *widget,
-					       struct tablet *tablet,
-					       float x,
-					       float y,
-					       uint32_t time,
-					       void *data);
+typedef int (*widget_tablet_motion_handler_t)(struct widget *widget,
+					      struct tablet *tablet,
+					      float x,
+					      float y,
+					      uint32_t time,
+					      void *data);
 typedef void (*widget_tablet_proximity_in_handler_t)(struct widget *widget,
 						     struct tablet *tablet,
 						     void *data);
@@ -473,6 +473,8 @@ void
 widget_destroy(struct widget *widget);
 void
 widget_set_default_cursor(struct widget *widget, int cursor);
+void
+widget_set_default_tablet_cursor(struct widget *widget, int cursor);
 void
 widget_get_allocation(struct widget *widget, struct rectangle *allocation);
 
