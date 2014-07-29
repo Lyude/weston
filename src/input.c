@@ -481,6 +481,33 @@ default_grab_tablet_motion(struct weston_tablet_grab *grab,
 }
 
 static void
+default_grab_tablet_down(struct weston_tablet_grab *grab, uint32_t time)
+{
+	struct weston_tablet *tablet = grab->tablet;
+	struct wl_resource *resource;
+	struct wl_list *resource_list = &tablet->focus_resource_list;
+
+	if (!wl_list_empty(resource_list)) {
+		wl_resource_for_each(resource, resource_list)
+			wl_tablet_send_down(resource, tablet->grab_serial,
+					    time);
+	}
+}
+
+static void
+default_grab_tablet_up(struct weston_tablet_grab *grab, uint32_t time)
+{
+	struct weston_tablet *tablet = grab->tablet;
+	struct wl_resource *resource;
+	struct wl_list *resource_list = &tablet->focus_resource_list;
+
+	if (!wl_list_empty(resource_list)) {
+		wl_resource_for_each(resource, resource_list)
+			wl_tablet_send_up(resource, time);
+	}
+}
+
+static void
 default_grab_tablet_button(struct weston_tablet_grab *grab,
 			   uint32_t time, uint32_t button,
 			   enum wl_tablet_button_state state)
@@ -518,8 +545,8 @@ static struct weston_tablet_grab_interface default_tablet_grab_interface = {
 	default_grab_tablet_proximity_in,
 	default_grab_tablet_proximity_out,
 	default_grab_tablet_motion,
-	NULL,
-	NULL,
+	default_grab_tablet_down,
+	default_grab_tablet_up,
 	NULL,
 	NULL,
 	NULL,
@@ -773,6 +800,9 @@ weston_tablet_set_focus(struct weston_tablet *tablet, struct weston_view *view,
 
 	if (tablet->focus && !wl_list_empty(focus_resource_list)) {
 		wl_resource_for_each(resource, focus_resource_list) {
+			if (tablet->tool_contact_status == WESTON_TOOL_DOWN)
+				wl_tablet_send_up(resource, time);
+
 			wl_tablet_send_proximity_out(resource, time);
 			wl_tablet_send_frame(resource);
 		}
@@ -822,6 +852,11 @@ weston_tablet_set_focus(struct weston_tablet *tablet, struct weston_view *view,
 						    tablet->focus_serial,
 						    time, tool_resource,
 						    view->surface->resource);
+
+			if (tablet->tool_contact_status == WESTON_TOOL_DOWN)
+				wl_tablet_send_down(resource,
+						    tablet->focus_serial,
+						    time);
 		}
 	} else if (tablet->sprite)
 		tablet_unmap_sprite(tablet);
@@ -1964,6 +1999,32 @@ notify_tablet_button(struct weston_tablet *tablet, uint32_t time,
 
 	tablet->grab_serial = wl_display_next_serial(compositor->wl_display);
 	grab->interface->button(grab, time, button, state);
+}
+
+WL_EXPORT void
+notify_tablet_down(struct weston_tablet *tablet, uint32_t time)
+{
+	struct weston_tablet_grab *grab = tablet->grab;
+	struct weston_compositor *compositor = tablet->seat->compositor;
+
+	weston_compositor_idle_inhibit(compositor);
+
+	tablet->tool_contact_status = WESTON_TOOL_DOWN;
+
+	grab->interface->down(grab, time);
+}
+
+WL_EXPORT void
+notify_tablet_up(struct weston_tablet *tablet, uint32_t time)
+{
+	struct weston_tablet_grab *grab = tablet->grab;
+	struct weston_compositor *compositor = tablet->seat->compositor;
+
+	weston_compositor_idle_release(compositor);
+
+	tablet->tool_contact_status = WESTON_TOOL_UP;
+
+	grab->interface->up(grab, time);
 }
 
 static void
