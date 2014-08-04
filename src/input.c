@@ -30,6 +30,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <limits.h>
+#include <linux/input.h>
 
 #include "../shared/os-compatibility.h"
 #include "compositor.h"
@@ -2085,6 +2086,9 @@ notify_tablet_button(struct weston_tablet *tablet, uint32_t time,
 	}
 
 	tablet->grab_serial = wl_display_next_serial(compositor->wl_display);
+
+	weston_compositor_run_tablet_binding(compositor, tablet, button, state);
+
 	grab->interface->button(grab, time, button, state);
 }
 
@@ -2100,6 +2104,9 @@ notify_tablet_down(struct weston_tablet *tablet, uint32_t time)
 	tablet->grab_serial = wl_display_get_serial(compositor->wl_display);
 	tablet->grab_x = tablet->x;
 	tablet->grab_y = tablet->y;
+
+	weston_compositor_run_tablet_binding(compositor, tablet, BTN_TOUCH,
+					     WL_TABLET_BUTTON_STATE_PRESSED);
 
 	grab->interface->down(grab, time);
 }
