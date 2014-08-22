@@ -170,6 +170,8 @@ struct tablet {
 	uint32_t cursor_anim_start;
 	struct wl_callback *cursor_frame_cb;
 
+	int button_count;
+
 	struct tablet_tool *current_tool;
 
 	char *name;
@@ -3557,7 +3559,7 @@ tablet_set_focus_widget(struct tablet *tablet, struct window *window,
 	struct widget *widget;
 
 	widget = window_find_widget(window, sx, sy);
-	if (tablet->focus_widget != widget) {
+	if (tablet->focus_widget != widget && widget) {
 		struct widget *old = tablet->focus_widget;
 
 		if (old && old->tablet_proximity_out_handler)
@@ -3633,10 +3635,11 @@ tablet_handle_motion(void *data, struct wl_tablet *wl_tablet, uint32_t time,
 	    sy > window->main_surface->allocation.height)
 		return;
 
-	tablet_set_focus_widget(tablet, window, sx, sy);
+	if (tablet->button_count <= 0)
+		tablet_set_focus_widget(tablet, window, sx, sy);
 	widget = tablet->focus_widget;
 
-	if (widget && widget->tablet_motion_handler)
+	if (widget->tablet_motion_handler)
 		cursor = widget->tablet_motion_handler(
 		    widget, tablet, sx, sy, time, widget->user_data);
 	else
@@ -3705,6 +3708,29 @@ tablet_handle_frame(void *data, struct wl_tablet *wl_tablet)
 }
 
 static void
+tablet_update_focus_widget(struct tablet *tablet, uint32_t time)
+{
+	struct widget *last_focus_widget = tablet->focus_widget;
+	wl_fixed_t sx = tablet->sx,
+		   sy = tablet->sy;
+
+	tablet_set_focus_widget(tablet, tablet->focus, sx, sy);
+	if (tablet->focus_widget != last_focus_widget) {
+		struct widget *widget = tablet->focus_widget;
+		int cursor;
+
+		if (widget && widget->tablet_motion_handler)
+			cursor = widget->tablet_motion_handler(widget, tablet,
+							       sx, sy, time,
+							       widget->user_data);
+		else
+			cursor = widget->default_tablet_cursor;
+
+		tablet_set_cursor_image(tablet, cursor);
+	}
+}
+
+static void
 tablet_handle_button(void *data, struct wl_tablet *wl_tablet, uint32_t serial,
 		     uint32_t time, uint32_t button, uint32_t state)
 {
@@ -3716,6 +3742,11 @@ tablet_handle_button(void *data, struct wl_tablet *wl_tablet, uint32_t serial,
 	if (focus && focus->tablet_button_handler)
 		focus->tablet_button_handler(focus, tablet, button, state, time,
 					     focus->user_data);
+
+	if (state == WL_TABLET_BUTTON_STATE_PRESSED)
+		tablet->button_count++;
+	else if (--tablet->button_count == 0)
+		tablet_update_focus_widget(tablet, time);
 }
 
 static void
@@ -3726,6 +3757,7 @@ tablet_handle_down(void *data, struct wl_tablet *wl_tablet, uint32_t serial,
 	struct widget *focus = tablet->focus_widget;
 
 	tablet->input->display->serial = serial;
+	tablet->button_count++;
 
 	if (focus && focus->tablet_down_handler)
 		focus->tablet_down_handler(focus, tablet, time, focus->user_data);
@@ -3739,6 +3771,9 @@ tablet_handle_up(void *data, struct wl_tablet *wl_tablet, uint32_t time)
 
 	if (focus && focus->tablet_up_handler)
 		focus->tablet_up_handler(focus, tablet, time, focus->user_data);
+
+	if (--tablet->button_count == 0)
+		tablet_update_focus_widget(tablet, time);
 }
 
 static const struct wl_tablet_listener tablet_listener = {
