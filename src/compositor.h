@@ -418,6 +418,7 @@ struct weston_tablet_tool {
 	uint32_t focus_serial;
 	uint32_t grab_serial;
 
+	struct wl_list tablet_list;
 	struct wl_list link;
 
 	uint64_t serial;
@@ -448,6 +449,7 @@ struct weston_tablet {
 	struct wl_list resource_list;
 
 	struct wl_list link;
+	struct wl_list tool_link;
 
 	char *name;
 	enum wl_tablet_tablet_type type;
