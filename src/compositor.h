@@ -422,6 +422,7 @@ struct weston_tablet_tool {
 	struct wl_list link;
 
 	uint64_t serial;
+	uint64_t hwid;
 	uint32_t capabilities;
 
 	struct weston_tablet_tool_grab *grab;

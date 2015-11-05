@@ -346,6 +346,7 @@ handle_tablet_proximity(struct libinput_device *libinput_device,
 	if (create) {
 		tool = weston_seat_add_tablet_tool(device->seat);
 		tool->serial = serial;
+		tool->hwid = libinput_tool_get_tool_id(libinput_tool);
 		tool->type = type;
 		tool->capabilities = 0;
 

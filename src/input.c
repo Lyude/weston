@@ -2217,6 +2217,10 @@ send_tool_added(struct weston_tablet_tool *tool,
 	wl_tablet_tool_send_serial_id(tool_resource,
 				      tool->serial >> 32,
 				      tool->serial & 0xFFFFFFFF);
+	wl_tablet_tool_send_hardware_id(tool_resource,
+					WL_TABLET_TOOL_HARDWARE_ID_FORMAT_WACOM_STYLUS_ID,
+					tool->hwid >> 32,
+					tool->hwid & 0xFFFFFFFF);
 	caps = tool->capabilities;
 	while (caps != 0) {
 		cap = ffs(caps) - 1;
