@@ -773,7 +773,13 @@ static void
 default_grab_tablet_tool_proximity_out(struct weston_tablet_tool_grab *grab,
 				       uint32_t time)
 {
-	weston_tablet_tool_set_focus(grab->tool, NULL, time);
+	struct weston_tablet_tool *tool = grab->tool;
+
+	weston_tablet_tool_set_focus(tool, NULL, time);
+
+	/* Hide the cursor */
+	if (weston_surface_is_mapped(tool->sprite->surface))
+		weston_surface_unmap(tool->sprite->surface);
 }
 
 static void
