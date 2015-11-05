@@ -163,13 +163,6 @@ proximity_in_handler(struct widget *widget, struct tablet_tool *tool,
 }
 
 static void
-proximity_out_handler(struct widget *widget, struct tablet_tool *tool,
-		      void *data)
-{
-	tablet_tool_set_cursor_image(tool, CURSOR_BLANK);
-}
-
-static void
 pressure_handler(struct widget *widget, struct tablet_tool *tool, uint32_t time,
 		 uint32_t pressure, void *data)
 {
@@ -218,7 +211,7 @@ init_globals(void)
 	widget_set_tablet_tool_pressure_handler(widget, pressure_handler);
 	widget_set_tablet_tool_proximity_handlers(widget,
 						  proximity_in_handler,
-						  proximity_out_handler);
+						  NULL);
 	widget_set_redraw_handler(widget, redraw_handler);
 	widget_set_resize_handler(widget, resize_handler);
 
