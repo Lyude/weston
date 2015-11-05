@@ -2168,13 +2168,12 @@ tablet_tool_set_cursor(struct wl_client *client, struct wl_resource *resource,
 	if (tool->focus_serial - serial > UINT32_MAX / 2)
 		return;
 
-	if (surface && tool->sprite && surface != tool->sprite->surface) {
-		if (surface->configure) {
-			wl_resource_post_error(surface->resource,
-					       WL_DISPLAY_ERROR_INVALID_OBJECT,
-					       "surface->configure already set");
-			return;
-		}
+	if (surface && tool->sprite && surface != tool->sprite->surface &&
+	    surface->configure) {
+		wl_resource_post_error(surface->resource,
+				       WL_DISPLAY_ERROR_INVALID_OBJECT,
+				       "surface->configure already set");
+		return;
 	}
 
 	if (tool->sprite)
