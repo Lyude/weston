@@ -2611,7 +2611,7 @@ frame_touch_up_handler(struct widget *widget,
 	frame_handle_status(frame, input, time, THEME_LOCATION_CLIENT_AREA);
 }
 
-static void
+static int
 frame_tablet_tool_motion_handler(struct widget *widget,
 				 struct tablet_tool *tool,
 				 float x, float y,
@@ -2626,6 +2626,8 @@ frame_tablet_tool_motion_handler(struct widget *widget,
 		widget_schedule_redraw(frame->widget);
 
 	frame_get_pointer_image_for_location(data, location);
+
+	return CURSOR_DEFAULT;
 }
 
 static void
