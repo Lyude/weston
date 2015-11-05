@@ -5745,6 +5745,9 @@ tablet_tool_set_cursor_image(struct tablet_tool *tool, int cursor)
 	if (!force && cursor == tool->current_cursor)
 		return;
 
+	tool->current_cursor = cursor;
+	tool->cursor_serial = tool->enter_serial;
+
 	if (!tool->cursor_frame_cb)
 		tablet_tool_surface_frame_callback(tool, NULL, 0);
 	else if (force) {
@@ -5848,6 +5851,7 @@ tablet_tool_handle_motion(void *data, struct wl_tablet_tool *wl_tablet_tool,
 	double sy = wl_fixed_to_double(y);
 	struct window *window = tool->focus;
 	struct widget *widget;
+	int cursor;
 
 	if (!window)
 		return;
@@ -5862,12 +5866,13 @@ tablet_tool_handle_motion(void *data, struct wl_tablet_tool *wl_tablet_tool,
 	tablet_tool_set_focus_widget(tool, window, sx, sy);
 	widget = tool->focus_widget;
 	if (widget && widget->tablet_tool_motion_handler) {
-		widget->tablet_tool_motion_handler(widget, tool, sx, sy, time,
-						   widget->user_data);
-	} else {
-		tablet_tool_set_cursor_image(tool,
-					     widget->default_tablet_cursor);
-	}
+		cursor = widget->tablet_tool_motion_handler(widget, tool,
+							    sx, sy, time,
+							    widget->user_data);
+	} else
+		cursor = widget->default_tablet_cursor;
+
+	tablet_tool_set_cursor_image(tool, cursor);
 }
 
 static void

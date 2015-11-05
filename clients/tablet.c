@@ -159,7 +159,6 @@ proximity_in_handler(struct widget *widget, struct tablet_tool *tool,
 		     struct tablet *tablet, void *data)
 {
 	tool_type = tablet_tool_get_type(tool);
-	tablet_tool_set_cursor_image(tool, CURSOR_LEFT);
 }
 
 static void
@@ -169,15 +168,22 @@ pressure_handler(struct widget *widget, struct tablet_tool *tool, uint32_t time,
 	current_pressure = pressure;
 }
 
-static void
+static int
 tablet_motion_handler(struct widget *widget, struct tablet_tool *tool,
 		      float x, float y, uint32_t time, void *data)
 {
+	int cursor;
+
 	current_x = x;
 	current_y = y;
 
-	if (tablet_is_down)
+	if (tablet_is_down) {
 		widget_schedule_redraw(widget);
+		cursor = CURSOR_HAND1;
+	} else
+		cursor = CURSOR_LEFT_PTR;
+
+	return cursor;
 }
 
 static void

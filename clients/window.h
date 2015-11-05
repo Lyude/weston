@@ -269,11 +269,11 @@ typedef void (*widget_axis_handler_t)(struct widget *widget,
 				      uint32_t axis,
 				      wl_fixed_t value,
 				      void *data);
-typedef void (*widget_tablet_tool_motion_handler_t)(struct widget *widget,
-						    struct tablet_tool *tool,
-						    float x, float y,
-						    uint32_t time,
-						    void *data);
+typedef int (*widget_tablet_tool_motion_handler_t)(struct widget *widget,
+						   struct tablet_tool *tool,
+						   float x, float y,
+						   uint32_t time,
+						   void *data);
 typedef void (*widget_tablet_tool_down_handler_t)(struct widget *widget,
 						  struct tablet_tool *tool,
 						  uint32_t time,
