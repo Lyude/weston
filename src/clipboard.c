@@ -50,6 +50,8 @@ struct clipboard {
 	struct wl_listener selection_listener;
 	struct wl_listener destroy_listener;
 	struct clipboard_source *source;
+
+	enum weston_clipboard_type type;
 };
 
 static void clipboard_client_create(struct clipboard_source *source, int fd);
@@ -241,10 +243,16 @@ clipboard_set_selection(struct wl_listener *listener, void *data)
 	int p[2];
 
 	if (source == NULL) {
-		if (clipboard->source)
-			weston_seat_set_selection(seat,
-						  &clipboard->source->base,
-						  clipboard->source->serial);
+		if (clipboard->source) {
+			if (clipboard->type == WESTON_CLIPBOARD_NORMAL) {
+				weston_seat_set_selection(
+				    seat, &clipboard->source->base,
+				    clipboard->source->serial);
+			} else if (clipboard->type == WESTON_CLIPBOARD_PRIMARY) {
+				weston_seat_set_primary_selection(
+				    seat, &clipboard->source->base);
+			}
+		}
 		return;
 	} else if (source->accept == clipboard_source_accept) {
 		/* Callback for our data source. */
@@ -285,9 +293,10 @@ clipboard_destroy(struct wl_listener *listener, void *data)
 }
 
 struct clipboard *
-clipboard_create(struct weston_seat *seat)
+clipboard_create(struct weston_seat *seat, enum weston_clipboard_type type)
 {
 	struct clipboard *clipboard;
+	struct wl_signal *selection_signal;
 
 	clipboard = zalloc(sizeof *clipboard);
 	if (clipboard == NULL)
@@ -296,8 +305,14 @@ clipboard_create(struct weston_seat *seat)
 	clipboard->seat = seat;
 	clipboard->selection_listener.notify = clipboard_set_selection;
 	clipboard->destroy_listener.notify = clipboard_destroy;
+	clipboard->type = type;
 
-	wl_signal_add(&seat->selection_signal,
+	if (type == WESTON_CLIPBOARD_NORMAL)
+		selection_signal = &seat->selection_signal;
+	else
+		selection_signal = &seat->primary_selection_signal;
+
+	wl_signal_add(selection_signal,
 		      &clipboard->selection_listener);
 	wl_signal_add(&seat->destroy_signal,
 		      &clipboard->destroy_listener);

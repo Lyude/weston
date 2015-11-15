@@ -4647,6 +4647,7 @@ weston_compositor_create(struct wl_display *display, void *user_data)
 	weston_compositor_stack_plane(ec, &ec->primary_plane, NULL);
 
 	wl_data_device_manager_init(ec->wl_display);
+	wl_primary_selection_device_manager_init(ec->wl_display);
 
 	wl_display_init_shm(ec->wl_display);
 

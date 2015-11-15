@@ -458,6 +458,16 @@ wl_data_device_set_keyboard_focus(struct weston_seat *seat);
 int
 wl_data_device_manager_init(struct wl_display *display);
 
+struct weston_data_offer *
+weston_data_offer_create(struct weston_data_source *source,
+			 struct wl_resource *target);
+
+void
+middle_click_paste(struct weston_pointer *pointer, uint32_t time,
+		   uint32_t value, void *data);
+
+int
+wl_primary_selection_device_manager_init(struct wl_display *display);
 
 void
 weston_seat_set_selection(struct weston_seat *seat,
@@ -465,6 +475,9 @@ weston_seat_set_selection(struct weston_seat *seat,
 void
 weston_seat_send_selection(struct weston_seat *seat, struct wl_client *client);
 
+void
+weston_seat_set_primary_selection(struct weston_seat *seat,
+				  struct weston_data_source *source);
 int
 weston_pointer_start_drag(struct weston_pointer *pointer,
 		       struct weston_data_source *source,
@@ -558,6 +571,11 @@ struct weston_seat {
 	struct weston_data_source *selection_data_source;
 	struct wl_listener selection_data_source_listener;
 	struct wl_signal selection_signal;
+
+	struct weston_data_source *primary_selection_data_source;
+	struct wl_listener primary_data_source_listener;
+	struct wl_signal primary_selection_signal;
+	struct wl_list primary_selection_device_resource_list;
 
 	void (*led_update)(struct weston_seat *ws, enum weston_led leds);
 
@@ -1541,8 +1559,13 @@ int
 weston_screenshooter_shoot(struct weston_output *output, struct weston_buffer *buffer,
 			   weston_screenshooter_done_func_t done, void *data);
 
+enum weston_clipboard_type {
+	WESTON_CLIPBOARD_NORMAL,
+	WESTON_CLIPBOARD_PRIMARY
+};
+
 struct clipboard *
-clipboard_create(struct weston_seat *seat);
+clipboard_create(struct weston_seat *seat, enum weston_clipboard_type type);
 
 struct text_backend;
 

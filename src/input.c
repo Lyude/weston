@@ -33,6 +33,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <limits.h>
+#include <linux/input.h>
 
 #include "shared/helpers.h"
 #include "shared/os-compatibility.h"
@@ -2550,9 +2551,11 @@ weston_seat_init(struct weston_seat *seat, struct weston_compositor *ec,
 	seat->selection_data_source = NULL;
 	wl_list_init(&seat->base_resource_list);
 	wl_signal_init(&seat->selection_signal);
+	wl_signal_init(&seat->primary_selection_signal);
 	wl_list_init(&seat->drag_resource_list);
 	wl_signal_init(&seat->destroy_signal);
 	wl_signal_init(&seat->updated_caps_signal);
+	wl_list_init(&seat->primary_selection_device_resource_list);
 
 	seat->global = wl_global_create(ec->wl_display, &wl_seat_interface, 4,
 					seat, bind_seat);
@@ -2563,7 +2566,8 @@ weston_seat_init(struct weston_seat *seat, struct weston_compositor *ec,
 
 	wl_list_insert(ec->seat_list.prev, &seat->link);
 
-	clipboard_create(seat);
+	clipboard_create(seat, WESTON_CLIPBOARD_NORMAL);
+	clipboard_create(seat, WESTON_CLIPBOARD_PRIMARY);
 
 	wl_signal_emit(&ec->seat_created_signal, seat);
 }

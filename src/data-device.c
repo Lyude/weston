@@ -115,12 +115,11 @@ destroy_offer_data_source(struct wl_listener *listener, void *data)
 	offer->source = NULL;
 }
 
-static struct wl_resource *
-weston_data_source_send_offer(struct weston_data_source *source,
-			      struct wl_resource *target)
+WL_EXPORT struct weston_data_offer *
+weston_data_offer_create(struct weston_data_source *source,
+			 struct wl_resource *target)
 {
 	struct weston_data_offer *offer;
-	char **p;
 
 	offer = malloc(sizeof *offer);
 	if (offer == NULL)
@@ -141,6 +140,20 @@ weston_data_source_send_offer(struct weston_data_source *source,
 	offer->source_destroy_listener.notify = destroy_offer_data_source;
 	wl_signal_add(&source->destroy_signal,
 		      &offer->source_destroy_listener);
+
+	return offer;
+}
+
+static struct wl_resource *
+weston_data_source_send_offer(struct weston_data_source *source,
+			      struct wl_resource *target)
+{
+	struct weston_data_offer *offer =
+		weston_data_offer_create(source, target);
+	char **p;
+
+	if (!offer)
+		return NULL;
 
 	wl_data_device_send_data_offer(target, offer->resource);
 

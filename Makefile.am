@@ -89,6 +89,8 @@ weston_SOURCES =					\
 	src/main.c					\
 	src/linux-dmabuf.c				\
 	src/linux-dmabuf.h				\
+	src/primary-selection.c				\
+	src/primary-selection.h				\
 	shared/helpers.h				\
 	shared/matrix.c					\
 	shared/matrix.h					\
@@ -126,7 +128,9 @@ nodist_weston_SOURCES =					\
 	protocol/scaler-protocol.c			\
 	protocol/scaler-server-protocol.h		\
 	protocol/linux-dmabuf-unstable-v1-protocol.c	\
-	protocol/linux-dmabuf-unstable-v1-server-protocol.h
+	protocol/linux-dmabuf-unstable-v1-server-protocol.h		\
+	protocol/primary-selection-unstable-v1-server-protocol.h	\
+	protocol/primary-selection-unstable-v1-protocol.c
 
 BUILT_SOURCES += $(nodist_weston_SOURCES)
 

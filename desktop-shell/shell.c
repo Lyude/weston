@@ -6425,6 +6425,8 @@ shell_add_bindings(struct weston_compositor *ec, struct desktop_shell *shell)
 	weston_compositor_add_axis_binding(ec, WL_POINTER_AXIS_VERTICAL_SCROLL,
 					   MODIFIER_SUPER, zoom_axis_binding,
 					   NULL);
+	weston_compositor_add_button_binding(ec, BTN_MIDDLE, 0,
+					     middle_click_paste, NULL);
 
 	/* configurable bindings */
 	mod = shell->binding_modifier;
