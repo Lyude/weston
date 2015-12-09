@@ -689,7 +689,8 @@ weston_editor_SOURCES = 			\
 	shared/helpers.h
 nodist_weston_editor_SOURCES =			\
 	protocol/text-input-unstable-v1-protocol.c		\
-	protocol/text-input-unstable-v1-client-protocol.h
+	protocol/text-input-unstable-v1-client-protocol.h	\
+	protocol/primary-selection-unstable-v1-client-protocol.h
 weston_editor_LDADD = libtoytoolkit.la $(PANGO_LIBS)
 weston_editor_CFLAGS = $(AM_CFLAGS) $(CLIENT_CFLAGS) $(PANGO_CFLAGS)
 endif

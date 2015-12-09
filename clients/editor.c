@@ -39,6 +39,7 @@
 #include "shared/helpers.h"
 #include "window.h"
 #include "text-input-unstable-v1-client-protocol.h"
+#include "primary-selection-unstable-v1-client-protocol.h"
 
 struct text_entry {
 	struct widget *widget;
@@ -87,6 +88,7 @@ struct editor {
 	struct text_entry *entry;
 	struct text_entry *editor;
 	struct text_entry *active_entry;
+	struct text_entry *selection_owner;
 };
 
 static const char *
@@ -176,6 +178,7 @@ static void text_entry_delete_text(struct text_entry *entry,
 				   uint32_t index, uint32_t length);
 static void text_entry_delete_selected_text(struct text_entry *entry);
 static void text_entry_reset_preedit(struct text_entry *entry);
+static void text_entry_reset_selection(struct text_entry *entry);
 static void text_entry_commit_and_reset(struct text_entry *entry);
 static void text_entry_get_cursor_rectangle(struct text_entry *entry, struct rectangle *rectangle);
 static void text_entry_update(struct text_entry *entry);
@@ -609,6 +612,21 @@ paste_func(void *buffer, size_t len,
 }
 
 static void
+editor_update_selected(struct editor *editor)
+{
+	struct text_entry *entry = editor->active_entry;
+	int start_index = MIN(entry->cursor, entry->anchor);
+	int end_index = MAX(entry->cursor, entry->anchor);
+	int len = end_index - start_index;
+
+	editor->selected_text = realloc(editor->selected_text, len + 1);
+	strncpy(editor->selected_text, &entry->text[start_index], len);
+	editor->selected_text[len] = '\0';
+
+	editor->selection_owner = len ? entry : NULL;
+}
+
+static void
 editor_copy_cut(struct editor *editor, struct input *input, bool cut)
 {
 	struct text_entry *entry = editor->active_entry;
@@ -617,16 +635,10 @@ editor_copy_cut(struct editor *editor, struct input *input, bool cut)
 		return;
 
 	if (entry->cursor != entry->anchor) {
-		int start_index = MIN(entry->cursor, entry->anchor);
-		int end_index = MAX(entry->cursor, entry->anchor);
-		int len = end_index - start_index;
-
-		editor->selected_text = realloc(editor->selected_text, len + 1);
-		strncpy(editor->selected_text, &entry->text[start_index], len);
-		editor->selected_text[len] = '\0';
+		editor_update_selected(editor);
 
 		if (cut)
-			text_entry_delete_text(entry, start_index, len);
+			text_entry_delete_selected_text(entry);
 
 		editor->selection =
 			display_create_data_source(editor->display);
@@ -938,6 +950,13 @@ text_entry_reset_preedit(struct text_entry *entry)
 }
 
 static void
+text_entry_reset_selection(struct text_entry *entry)
+{
+	entry->anchor = entry->cursor;
+	widget_schedule_redraw(entry->widget);
+}
+
+static void
 text_entry_commit_and_reset(struct text_entry *entry)
 {
 	char *commit = NULL;
@@ -1212,12 +1231,51 @@ text_entry_redraw_handler(struct widget *widget, void *data)
 	cairo_surface_destroy(surface);
 }
 
+static void
+editor_reset_selection(void *data)
+{
+	struct editor *editor = data;
+
+	text_entry_reset_selection(editor->selection_owner);
+	editor->selection_owner = NULL;
+
+	editor_update_selected(editor);
+}
+
+static void
+editor_update_primary_selection(struct input *input, struct editor *editor)
+{
+	if (!input_has_primary_selection(input))
+		return;
+
+	if (editor->selection_owner &&
+	    editor->selection_owner != editor->active_entry) {
+		text_entry_reset_selection(editor->selection_owner);
+		editor->selection_owner = NULL;
+	}
+
+	editor_update_selected(editor);
+
+	/* Don't change the primary selection if nothing is selected */
+	if (editor->selected_text[0] == '\0')
+		return;
+
+	editor->selection = display_create_data_source(editor->display);
+	wl_data_source_offer(editor->selection, "text/plain;charset=utf-8");
+	wl_data_source_add_listener(editor->selection, &data_source_listener,
+				    editor);
+
+	input_set_primary_selection(input, editor->selection,
+				    editor_reset_selection, editor);
+}
+
 static int
 text_entry_motion_handler(struct widget *widget,
 			  struct input *input, uint32_t time,
 			  float x, float y, void *data)
 {
 	struct text_entry *entry = data;
+	struct editor *editor = window_get_user_data(entry->window);
 	struct rectangle allocation;
 	int tx, ty;
 
@@ -1231,6 +1289,8 @@ text_entry_motion_handler(struct widget *widget,
 	ty = y - allocation.y - text_offset_top(&allocation);
 
 	text_entry_set_cursor_position(entry, tx, ty, false);
+
+	editor_update_primary_selection(input, editor);
 
 	return CURSOR_IBEAM;
 }
@@ -1262,6 +1322,13 @@ text_entry_button_handler(struct widget *widget,
 			input_grab(input, entry->widget, button);
 		else
 			input_ungrab(input);
+		break;
+	case BTN_MIDDLE:
+		if (state == WL_POINTER_BUTTON_STATE_PRESSED) {
+			input_accept_primary_selection(input);
+			input_receive_primary_selection_data(input, paste_func,
+							     editor);
+		}
 		break;
 	case BTN_RIGHT:
 		if (state == WL_POINTER_BUTTON_STATE_PRESSED)
