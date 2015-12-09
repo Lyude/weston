@@ -29,6 +29,7 @@
 #include <xkbcommon/xkbcommon.h>
 #include <wayland-client.h>
 #include <cairo.h>
+#include <stdbool.h>
 #include "shared/config-parser.h"
 #include "shared/zalloc.h"
 #include "shared/platform.h"
@@ -571,6 +572,20 @@ void
 input_set_selection(struct input *input,
 		    struct wl_data_source *source, uint32_t time);
 
+bool
+input_has_primary_selection(struct input *input);
+
+typedef void (*primary_selection_changed_handler_t)(void *data);
+
+void
+input_set_primary_selection(struct input *input,
+			    struct wl_data_source *source,
+			    primary_selection_changed_handler_t cb,
+			    void *data);
+
+void
+input_accept_primary_selection(struct input *input);
+
 void
 input_accept(struct input *input, const char *type);
 
@@ -588,6 +603,10 @@ input_receive_selection_data(struct input *input, const char *mime_type,
 int
 input_receive_selection_data_to_fd(struct input *input,
 				   const char *mime_type, int fd);
+
+int
+input_receive_primary_selection_data(struct input *input, data_func_t func,
+				     void *data);
 
 void
 output_set_user_data(struct output *output, void *data);

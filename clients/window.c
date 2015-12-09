@@ -70,6 +70,7 @@ typedef void *EGLContext;
 #include "shared/helpers.h"
 #include "xdg-shell-unstable-v5-client-protocol.h"
 #include "text-cursor-position-client-protocol.h"
+#include "primary-selection-unstable-v1-client-protocol.h"
 #include "shared/os-compatibility.h"
 
 #include "window.h"
@@ -77,6 +78,8 @@ typedef void *EGLContext;
 #include <sys/types.h>
 #include "ivi-application-client-protocol.h"
 #define IVI_SURFACE_ID 9000
+
+#define PRIMARY_SELECTION_MIME_TYPE "text/plain;charset=utf-8"
 
 struct shm_pool;
 
@@ -94,6 +97,7 @@ struct display {
 	struct wl_subcompositor *subcompositor;
 	struct wl_shm *shm;
 	struct wl_data_device_manager *data_device_manager;
+	struct zwp_primary_selection_device_manager_v1 *primary_selection_device_manager;
 	struct text_cursor_position *text_cursor_position;
 	struct xdg_shell *xdg_shell;
 	struct ivi_application *ivi_application; /* ivi style shell */
@@ -330,13 +334,18 @@ struct input {
 	uint32_t grab_button;
 
 	struct wl_data_device *data_device;
+	struct zwp_primary_selection_device_v1 *primary_selection_device;
 	struct data_offer *drag_offer;
 	struct data_offer *selection_offer;
+	struct data_offer *primary_selection_offer;
 	uint32_t touch_grab;
 	int32_t touch_grab_id;
 	float drag_x, drag_y;
 	struct window *drag_focus;
 	uint32_t drag_enter_serial;
+
+	primary_selection_changed_handler_t primary_selection_changed_handler;
+	void *primary_selection_changed_data;
 
 	struct {
 		struct xkb_keymap *keymap;
@@ -3493,6 +3502,45 @@ static const struct wl_data_device_listener data_device_listener = {
 };
 
 static void
+primary_selection_device_selection_changed(void *data,
+					   struct zwp_primary_selection_device_v1 *device)
+{
+	struct input *input = data;
+
+	input->primary_selection_offer = NULL;
+
+	if (input->primary_selection_changed_handler) {
+		input->primary_selection_changed_handler(
+		    input->primary_selection_changed_data);
+	}
+}
+
+static void
+primary_selection_device_offer(void *data,
+			       struct zwp_primary_selection_device_v1 *device,
+			       struct wl_data_offer *_offer)
+{
+	struct data_offer *offer;
+	struct input *input = data;
+
+	offer = xmalloc(sizeof *offer);
+
+	wl_array_init(&offer->types);
+	offer->refcount = 1;
+	offer->input = input;
+	offer->offer = _offer;
+	wl_data_offer_add_listener(offer->offer, &data_offer_listener, offer);
+
+	input->primary_selection_offer = offer;
+}
+
+static const struct zwp_primary_selection_device_v1_listener
+primary_selection_device_listener = {
+	primary_selection_device_selection_changed,
+	primary_selection_device_offer
+};
+
+static void
 input_set_pointer_image_index(struct input *input, int index)
 {
 	struct wl_buffer *buffer;
@@ -3705,6 +3753,38 @@ input_set_selection(struct input *input,
 		wl_data_device_set_selection(input->data_device, source, time);
 }
 
+bool
+input_has_primary_selection(struct input *input)
+{
+	return !!input->primary_selection_device;
+}
+
+void
+input_set_primary_selection(struct input *input,
+			    struct wl_data_source *source,
+			    primary_selection_changed_handler_t cb,
+			    void *data)
+{
+	if (!input->primary_selection_device)
+		return;
+
+	input->primary_selection_changed_handler = cb;
+	input->primary_selection_changed_data = data;
+
+	zwp_primary_selection_device_v1_selection_set(input->primary_selection_device,
+						 source);
+}
+
+void
+input_accept_primary_selection(struct input *input)
+{
+	if (!input->primary_selection_offer)
+		return;
+
+	wl_data_offer_accept(input->primary_selection_offer->offer, 0,
+			     "text/plain;charset=utf-8");
+}
+
 void
 input_accept(struct input *input, const char *type)
 {
@@ -3789,6 +3869,27 @@ input_receive_selection_data(struct input *input, const char *mime_type,
 
 	data_offer_receive_data(input->selection_offer,
 				mime_type, func, data);
+	return 0;
+}
+
+int
+input_receive_primary_selection_data(struct input *input, data_func_t func,
+				     void *data)
+{
+	char **p;
+
+	if (input->primary_selection_offer == NULL)
+		return -1;
+
+	for (p = input->primary_selection_offer->types.data; *p; p++)
+		if (strcmp(PRIMARY_SELECTION_MIME_TYPE, *p) == 0)
+			break;
+
+	if (*p == NULL)
+		return -1;
+
+	data_offer_receive_data(input->primary_selection_offer,
+				PRIMARY_SELECTION_MIME_TYPE, func, data);
 	return 0;
 }
 
@@ -5204,6 +5305,16 @@ display_add_input(struct display *d, uint32_t id, int display_seat_version)
 					    input);
 	}
 
+	if (d->primary_selection_device_manager) {
+		input->primary_selection_device =
+			zwp_primary_selection_device_manager_v1_get_primary_selection_device(
+			    d->primary_selection_device_manager, input->seat);
+
+		zwp_primary_selection_device_v1_add_listener(
+		    input->primary_selection_device,
+		    &primary_selection_device_listener, input);
+	}
+
 	input->pointer_surface = wl_compositor_create_surface(d->compositor);
 	input->cursor_task.run = cursor_timer_func;
 
@@ -5232,12 +5343,19 @@ input_destroy(struct input *input)
 	if (input->selection_offer)
 		data_offer_destroy(input->selection_offer);
 
+	if (input->primary_selection_offer)
+		data_offer_destroy(input->primary_selection_offer);
+
 	if (input->data_device) {
 		if (input->display->data_device_manager_version >= 2)
 			wl_data_device_release(input->data_device);
 		else
 			wl_data_device_destroy(input->data_device);
 	}
+
+	if (input->primary_selection_device)
+		zwp_primary_selection_device_v1_destroy(input->primary_selection_device);
+
 	if (input->seat_version >= WL_POINTER_RELEASE_SINCE_VERSION) {
 		if (input->touch)
 			wl_touch_release(input->touch);
@@ -5341,6 +5459,11 @@ registry_handle_global(void *data, struct wl_registry *registry, uint32_t id,
 		d->ivi_application =
 			wl_registry_bind(registry, id,
 					 &ivi_application_interface, 1);
+	} else if (strcmp(interface, "zwp_primary_selection_device_manager_v1") == 0) {
+		d->primary_selection_device_manager =
+			wl_registry_bind(
+			    registry, id,
+			    &zwp_primary_selection_device_manager_v1_interface, 1);
 	}
 
 	if (d->global_handler)
@@ -5648,6 +5771,11 @@ display_destroy(struct display *display)
 
 	if (display->data_device_manager)
 		wl_data_device_manager_destroy(display->data_device_manager);
+
+	if (display->primary_selection_device_manager) {
+		zwp_primary_selection_device_manager_v1_destroy(
+		    display->primary_selection_device_manager);
+	}
 
 	wl_compositor_destroy(display->compositor);
 	wl_registry_destroy(display->registry);
