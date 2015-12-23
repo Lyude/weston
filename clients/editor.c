@@ -81,6 +81,7 @@ struct text_entry {
 struct editor {
 	struct zwp_text_input_manager_v1 *text_input_manager;
 	struct wl_data_source *selection;
+	struct zwp_primary_selection_source_v1 *primary_selection;
 	char *selected_text;
 	struct display *display;
 	struct window *window;
@@ -589,6 +590,36 @@ static const struct wl_data_source_listener data_source_listener = {
 	data_source_target,
 	data_source_send,
 	data_source_cancelled
+};
+
+static void
+primary_selection_source_send(void *data,
+			      struct zwp_primary_selection_source_v1 *source,
+			      const char *mime_type, int32_t fd)
+{
+	struct editor *editor = data;
+
+	if (write(fd, editor->selected_text, strlen(editor->selected_text) + 1) < 0)
+		fprintf(stderr, "write failed: %m\n");
+}
+
+static void editor_reset_selection(struct editor *editor);
+
+static void
+primary_selection_source_cancelled(void *data,
+				   struct zwp_primary_selection_source_v1 *source)
+{
+	struct editor *editor = data;
+
+	if (editor->primary_selection == source)
+		editor_reset_selection(editor);
+
+	zwp_primary_selection_source_v1_destroy(source);
+}
+
+static const struct zwp_primary_selection_source_v1_listener primary_selection_source_listener = {
+	primary_selection_source_send,
+	primary_selection_source_cancelled,
 };
 
 static void
@@ -1232,10 +1263,8 @@ text_entry_redraw_handler(struct widget *widget, void *data)
 }
 
 static void
-editor_reset_selection(void *data)
+editor_reset_selection(struct editor *editor)
 {
-	struct editor *editor = data;
-
 	text_entry_reset_selection(editor->selection_owner);
 	editor->selection_owner = NULL;
 
@@ -1260,13 +1289,15 @@ editor_update_primary_selection(struct input *input, struct editor *editor)
 	if (editor->selected_text[0] == '\0')
 		return;
 
-	editor->selection = display_create_data_source(editor->display);
-	wl_data_source_offer(editor->selection, "text/plain;charset=utf-8");
-	wl_data_source_add_listener(editor->selection, &data_source_listener,
-				    editor);
+	editor->primary_selection =
+		display_create_primary_selection_source(editor->display);
+	zwp_primary_selection_source_v1_offer(editor->primary_selection,
+					      "text/plain;charset=utf-8");
+	zwp_primary_selection_source_v1_add_listener(
+	    editor->primary_selection, &primary_selection_source_listener,
+	    editor);
 
-	input_set_primary_selection(input, editor->selection,
-				    editor_reset_selection, editor);
+	input_set_primary_selection(input, editor->primary_selection);
 }
 
 static int
@@ -1325,7 +1356,6 @@ text_entry_button_handler(struct widget *widget,
 		break;
 	case BTN_MIDDLE:
 		if (state == WL_POINTER_BUTTON_STATE_PRESSED) {
-			input_accept_primary_selection(input);
 			input_receive_primary_selection_data(input, paste_func,
 							     editor);
 		}

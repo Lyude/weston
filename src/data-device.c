@@ -70,7 +70,7 @@ data_offer_accept(struct wl_client *client, struct wl_resource *resource,
 		offer->source->accept(offer->source, serial, mime_type);
 }
 
-static void
+WL_EXPORT void
 data_offer_receive(struct wl_client *client, struct wl_resource *resource,
 		   const char *mime_type, int32_t fd)
 {
@@ -82,7 +82,7 @@ data_offer_receive(struct wl_client *client, struct wl_resource *resource,
 		close(fd);
 }
 
-static void
+WL_EXPORT void
 data_offer_destroy(struct wl_client *client, struct wl_resource *resource)
 {
 	wl_resource_destroy(resource);
@@ -117,7 +117,8 @@ destroy_offer_data_source(struct wl_listener *listener, void *data)
 
 WL_EXPORT struct weston_data_offer *
 weston_data_offer_create(struct weston_data_source *source,
-			 struct wl_resource *target)
+			 struct wl_resource *target,
+			 const struct wl_interface *interface)
 {
 	struct weston_data_offer *offer;
 
@@ -125,16 +126,15 @@ weston_data_offer_create(struct weston_data_source *source,
 	if (offer == NULL)
 		return NULL;
 
-	offer->resource =
-		wl_resource_create(wl_resource_get_client(target),
-				   &wl_data_offer_interface, 1, 0);
+	offer->resource = wl_resource_create(wl_resource_get_client(target),
+					     interface, 1, 0);
 	if (offer->resource == NULL) {
 		free(offer);
 		return NULL;
 	}
 
-	wl_resource_set_implementation(offer->resource, &data_offer_interface,
-				       offer, destroy_data_offer);
+	wl_resource_set_implementation(offer->resource, interface, offer,
+				       destroy_data_offer);
 
 	offer->source = source;
 	offer->source_destroy_listener.notify = destroy_offer_data_source;
@@ -149,7 +149,8 @@ weston_data_source_send_offer(struct weston_data_source *source,
 			      struct wl_resource *target)
 {
 	struct weston_data_offer *offer =
-		weston_data_offer_create(source, target);
+		weston_data_offer_create(source, target,
+					 &wl_data_offer_interface);
 	char **p;
 
 	if (!offer)
@@ -163,10 +164,10 @@ weston_data_source_send_offer(struct weston_data_source *source,
 	return offer->resource;
 }
 
-static void
-data_source_offer(struct wl_client *client,
-		  struct wl_resource *resource,
-		  const char *type)
+WL_EXPORT void
+weston_data_source_offer(struct wl_client *client,
+			 struct wl_resource *resource,
+			 const char *type)
 {
 	struct weston_data_source *source =
 		wl_resource_get_user_data(resource);
@@ -186,7 +187,7 @@ data_source_destroy(struct wl_client *client, struct wl_resource *resource)
 }
 
 static struct wl_data_source_interface data_source_interface = {
-	data_source_offer,
+	weston_data_source_offer,
 	data_source_destroy
 };
 
@@ -844,8 +845,8 @@ static const struct wl_data_device_interface data_device_interface = {
 	data_device_release
 };
 
-static void
-destroy_data_source(struct wl_resource *resource)
+void
+weston_data_source_destroy(struct wl_resource *resource)
 {
 	struct weston_data_source *source =
 		wl_resource_get_user_data(resource);
@@ -904,7 +905,7 @@ create_data_source(struct wl_client *client,
 	source->resource =
 		wl_resource_create(client, &wl_data_source_interface, 1, id);
 	wl_resource_set_implementation(source->resource, &data_source_interface,
-				       source, destroy_data_source);
+				       source, weston_data_source_destroy);
 }
 
 static void unbind_data_device(struct wl_resource *resource)

@@ -344,9 +344,6 @@ struct input {
 	struct window *drag_focus;
 	uint32_t drag_enter_serial;
 
-	primary_selection_changed_handler_t primary_selection_changed_handler;
-	void *primary_selection_changed_data;
-
 	struct {
 		struct xkb_keymap *keymap;
 		struct xkb_state *state;
@@ -3323,7 +3320,14 @@ input_get_focus_widget(struct input *input)
 }
 
 struct data_offer {
-	struct wl_data_offer *offer;
+	enum {
+		DATA_OFFER,
+		PRIMARY_SELECTION_OFFER
+	} type;
+	union {
+		struct wl_data_offer *wl_data_offer;
+		struct zwp_primary_selection_offer_v1 *primary_selection_offer;
+	};
 	struct input *input;
 	struct wl_array types;
 	int refcount;
@@ -3350,13 +3354,29 @@ static const struct wl_data_offer_listener data_offer_listener = {
 };
 
 static void
+primary_selection_offer_offer(void *data,
+			      struct zwp_primary_selection_offer_v1 *primary_selection_offer,
+			      const char *type)
+{
+	struct data_offer *offer = data;
+	char **p;
+
+	p = wl_array_add(&offer->types, sizeof *p);
+	*p = strdup(type);
+}
+
+static const struct zwp_primary_selection_offer_v1_listener primary_selection_offer_listener = {
+	primary_selection_offer_offer,
+};
+
+static void
 data_offer_destroy(struct data_offer *offer)
 {
 	char **p;
 
 	offer->refcount--;
 	if (offer->refcount == 0) {
-		wl_data_offer_destroy(offer->offer);
+		wl_data_offer_destroy(offer->wl_data_offer);
 		for (p = offer->types.data; *p; p++)
 			free(*p);
 		wl_array_release(&offer->types);
@@ -3376,8 +3396,8 @@ data_device_data_offer(void *data,
 	wl_array_init(&offer->types);
 	offer->refcount = 1;
 	offer->input = data;
-	offer->offer = _offer;
-	wl_data_offer_add_listener(offer->offer,
+	offer->wl_data_offer = _offer;
+	wl_data_offer_add_listener(offer->wl_data_offer,
 				   &data_offer_listener, offer);
 }
 
@@ -3502,23 +3522,9 @@ static const struct wl_data_device_listener data_device_listener = {
 };
 
 static void
-primary_selection_device_selection_changed(void *data,
-					   struct zwp_primary_selection_device_v1 *device)
-{
-	struct input *input = data;
-
-	input->primary_selection_offer = NULL;
-
-	if (input->primary_selection_changed_handler) {
-		input->primary_selection_changed_handler(
-		    input->primary_selection_changed_data);
-	}
-}
-
-static void
 primary_selection_device_offer(void *data,
 			       struct zwp_primary_selection_device_v1 *device,
-			       struct wl_data_offer *_offer)
+			       struct zwp_primary_selection_offer_v1 *_offer)
 {
 	struct data_offer *offer;
 	struct input *input = data;
@@ -3528,15 +3534,16 @@ primary_selection_device_offer(void *data,
 	wl_array_init(&offer->types);
 	offer->refcount = 1;
 	offer->input = input;
-	offer->offer = _offer;
-	wl_data_offer_add_listener(offer->offer, &data_offer_listener, offer);
+	offer->primary_selection_offer = _offer;
+	zwp_primary_selection_offer_v1_add_listener(
+	    offer->primary_selection_offer, &primary_selection_offer_listener,
+	    offer);
 
 	input->primary_selection_offer = offer;
 }
 
 static const struct zwp_primary_selection_device_v1_listener
 primary_selection_device_listener = {
-	primary_selection_device_selection_changed,
 	primary_selection_device_offer
 };
 
@@ -3761,34 +3768,19 @@ input_has_primary_selection(struct input *input)
 
 void
 input_set_primary_selection(struct input *input,
-			    struct wl_data_source *source,
-			    primary_selection_changed_handler_t cb,
-			    void *data)
+			    struct zwp_primary_selection_source_v1 *source)
 {
 	if (!input->primary_selection_device)
 		return;
 
-	input->primary_selection_changed_handler = cb;
-	input->primary_selection_changed_data = data;
-
-	zwp_primary_selection_device_v1_selection_set(input->primary_selection_device,
-						 source);
-}
-
-void
-input_accept_primary_selection(struct input *input)
-{
-	if (!input->primary_selection_offer)
-		return;
-
-	wl_data_offer_accept(input->primary_selection_offer->offer, 0,
-			     "text/plain;charset=utf-8");
+	zwp_primary_selection_device_v1_set_selection(
+	    input->primary_selection_device, source);
 }
 
 void
 input_accept(struct input *input, const char *type)
 {
-	wl_data_offer_accept(input->drag_offer->offer,
+	wl_data_offer_accept(input->drag_offer->wl_data_offer,
 			     input->drag_enter_serial, type);
 }
 
@@ -3819,7 +3811,13 @@ data_offer_receive_data(struct data_offer *offer, const char *mime_type,
 	if (pipe2(p, O_CLOEXEC) == -1)
 		return;
 
-	wl_data_offer_receive(offer->offer, mime_type, p[1]);
+	if (offer->type == DATA_OFFER)
+		wl_data_offer_receive(offer->wl_data_offer, mime_type, p[1]);
+	else {
+		printf("reached receive, exiting\n");
+		zwp_primary_selection_offer_v1_receive(
+		    offer->primary_selection_offer, mime_type, p[1]);
+	}
 	close(p[1]);
 
 	offer->io_task.run = offer_io_func;
@@ -3846,7 +3844,8 @@ input_receive_drag_data_to_fd(struct input *input,
 			      const char *mime_type, int fd)
 {
 	if (input->drag_offer)
-		wl_data_offer_receive(input->drag_offer->offer, mime_type, fd);
+		wl_data_offer_receive(input->drag_offer->wl_data_offer,
+				      mime_type, fd);
 
 	return 0;
 }
@@ -3898,7 +3897,7 @@ input_receive_selection_data_to_fd(struct input *input,
 				   const char *mime_type, int fd)
 {
 	if (input->selection_offer)
-		wl_data_offer_receive(input->selection_offer->offer,
+		wl_data_offer_receive(input->selection_offer->wl_data_offer,
 				      mime_type, fd);
 
 	return 0;
@@ -5854,6 +5853,16 @@ display_create_data_source(struct display *display)
 {
 	if (display->data_device_manager)
 		return wl_data_device_manager_create_data_source(display->data_device_manager);
+	else
+		return NULL;
+}
+
+struct zwp_primary_selection_source_v1 *
+display_create_primary_selection_source(struct display *display)
+{
+	if (display->primary_selection_device_manager)
+		return zwp_primary_selection_device_manager_v1_create_primary_selection_source(
+		    display->primary_selection_device_manager);
 	else
 		return NULL;
 }

@@ -460,7 +460,22 @@ wl_data_device_manager_init(struct wl_display *display);
 
 struct weston_data_offer *
 weston_data_offer_create(struct weston_data_source *source,
-			 struct wl_resource *target);
+			 struct wl_resource *target,
+			 const struct wl_interface *interface);
+
+void
+weston_data_source_destroy(struct wl_resource *resource);
+
+void
+weston_data_source_offer(struct wl_client *client, struct wl_resource *resource,
+			 const char *type);
+
+void
+data_offer_receive(struct wl_client *client, struct wl_resource *resource,
+		   const char *mime_type, int32_t fd);
+
+void
+data_offer_destroy(struct wl_client *client, struct wl_resource *resource);
 
 void
 middle_click_paste(struct weston_pointer *pointer, uint32_t time,

@@ -25,6 +25,8 @@
 
 #include "config.h"
 
+#include <unistd.h>
+
 #include "compositor.h"
 #include "shared/helpers.h"
 #include "protocol/primary-selection-unstable-v1-server-protocol.h"
@@ -43,22 +45,11 @@ WL_EXPORT void
 weston_seat_set_primary_selection(struct weston_seat *seat,
 				  struct weston_data_source *source)
 {
-	struct wl_client *old_owner;
-	struct wl_resource *resource;
 	struct weston_data_source *current_source =
 		seat->primary_selection_data_source;
 
 	if (current_source) {
-		old_owner = wl_resource_get_client(current_source->resource);
-
-		resource = wl_resource_find_for_client(
-		    &seat->primary_selection_device_resource_list,
-		    old_owner);
-
 		seat->primary_selection_data_source->cancel(current_source);
-
-		if (old_owner != wl_resource_get_client(source->resource))
-		    zwp_primary_selection_device_v1_send_selection_changed(resource);
 
 		wl_list_remove(&seat->primary_data_source_listener.link);
 	}
@@ -74,7 +65,7 @@ weston_seat_set_primary_selection(struct weston_seat *seat,
 }
 
 static void
-weston_primary_selection_device_selection_set(struct wl_client *client,
+weston_primary_selection_device_set_selection(struct wl_client *client,
 					      struct wl_resource *resource,
 					      struct wl_resource *source_resource)
 {
@@ -87,14 +78,83 @@ weston_primary_selection_device_selection_set(struct wl_client *client,
 					  wl_resource_get_user_data(source_resource));
 }
 
+static void
+weston_primary_selection_device_destroy(struct wl_client *client,
+					struct wl_resource *resource)
+{
+	wl_list_remove(wl_resource_get_link(resource));
+	wl_resource_destroy(resource);
+}
+
 struct zwp_primary_selection_device_v1_interface primary_selection_device_interface = {
-	weston_primary_selection_device_selection_set
+	weston_primary_selection_device_set_selection,
+	weston_primary_selection_device_destroy,
 };
 
 static void
 unbind_primary_selection_device(struct wl_resource *resource)
 {
 	wl_list_remove(wl_resource_get_link(resource));
+}
+
+static void
+client_source_send(struct weston_data_source *source,
+		   const char *mime_type, int32_t fd)
+{
+	zwp_primary_selection_source_v1_send_send(source->resource, mime_type,
+						  fd);
+	close(fd);
+}
+
+static void
+client_source_cancel(struct weston_data_source *source)
+{
+	zwp_primary_selection_source_v1_send_cancelled(source->resource);
+}
+
+static void
+primary_selection_source_destroy(struct wl_client *client,
+				 struct wl_resource *resource)
+{
+	wl_resource_destroy(resource);
+}
+
+static struct zwp_primary_selection_source_v1_interface primary_selection_source_interface = {
+	weston_data_source_offer,
+	primary_selection_source_destroy
+};
+
+static void
+create_primary_selection_source(struct wl_client *client,
+				struct wl_resource *manager_resource, uint32_t id)
+{
+	struct weston_data_source *source;
+
+	source = malloc(sizeof(*source));
+	if (source == NULL) {
+		wl_resource_post_no_memory(manager_resource);
+		return;
+	}
+
+	source->resource = wl_resource_create(
+	    client, &zwp_primary_selection_source_v1_interface,
+	    wl_resource_get_version(manager_resource), id);
+	if (source->resource == NULL) {
+		free(source);
+		wl_resource_post_no_memory(manager_resource);
+		return;
+	}
+
+	wl_signal_init(&source->destroy_signal);
+	wl_array_init(&source->mime_types);
+
+	source->accept = NULL;
+	source->send = client_source_send;
+	source->cancel = client_source_cancel;
+
+	wl_resource_set_implementation(source->resource,
+				       &primary_selection_source_interface,
+				       source, weston_data_source_destroy);
 }
 
 static void
@@ -121,8 +181,18 @@ get_primary_selection_device(struct wl_client *client,
 				       seat, unbind_primary_selection_device);
 }
 
+static void
+destroy_primary_selection_device(struct wl_client *client,
+				 struct wl_resource *resource)
+{
+	wl_list_remove(wl_resource_get_link(resource));
+	wl_resource_destroy(resource); /* XXX: We might not need this */
+}
+
 struct zwp_primary_selection_device_manager_v1_interface primary_selection_device_manager_interface = {
-	get_primary_selection_device
+	create_primary_selection_source,
+	get_primary_selection_device,
+	destroy_primary_selection_device
 };
 
 static void
@@ -155,12 +225,18 @@ wl_primary_selection_device_manager_init(struct wl_display *display)
 	return 0;
 }
 
+static const struct zwp_primary_selection_offer_v1_interface primary_selection_offer_interface = {
+	data_offer_receive,
+	data_offer_destroy
+};
+
 static void
 weston_primary_selection_source_send_offer(struct weston_data_source *source,
 					   struct wl_resource *target)
 {
 	struct weston_data_offer *offer =
-		weston_data_offer_create(source, target);
+		weston_data_offer_create(source, target,
+					 &zwp_primary_selection_offer_v1_interface);
 	char **p;
 
 	if (!offer)
@@ -170,7 +246,7 @@ weston_primary_selection_source_send_offer(struct weston_data_source *source,
 							     offer->resource);
 
 	wl_array_for_each(p, &source->mime_types)
-		wl_data_offer_send_offer(offer->resource, *p);
+		zwp_primary_selection_offer_v1_send_offer(offer->resource, *p);
 
 	return;
 }

@@ -33,6 +33,7 @@
 #include "shared/config-parser.h"
 #include "shared/zalloc.h"
 #include "shared/platform.h"
+#include "protocol/primary-selection-unstable-v1-client-protocol.h"
 
 struct window;
 struct widget;
@@ -123,6 +124,9 @@ display_set_output_configure_handler(struct display *display,
 
 struct wl_data_source *
 display_create_data_source(struct display *display);
+
+struct zwp_primary_selection_source_v1 *
+display_create_primary_selection_source(struct display *display);
 
 #ifdef EGL_NO_DISPLAY
 EGLDisplay
@@ -575,13 +579,9 @@ input_set_selection(struct input *input,
 bool
 input_has_primary_selection(struct input *input);
 
-typedef void (*primary_selection_changed_handler_t)(void *data);
-
 void
 input_set_primary_selection(struct input *input,
-			    struct wl_data_source *source,
-			    primary_selection_changed_handler_t cb,
-			    void *data);
+			    struct zwp_primary_selection_source_v1 *source);
 
 void
 input_accept_primary_selection(struct input *input);
